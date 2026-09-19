@@ -474,10 +474,10 @@ def main():
     # Production Scheduler
     scheduler = AsyncIOScheduler(timezone=SGT)
     
-    # 1. Send Poll at 7:00 PM SGT every Sunday to Thursday (Targeting Mon–Fri attendance)
+    # 1. Send Poll at 1:28 AM SGT every Sunday to Thursday (Targeting Mon–Fri attendance)
     scheduler.add_job(
         send_attendance_poll, 
-        CronTrigger(day_of_week='sun-thu', hour=19, minute=0, timezone=SGT), 
+        CronTrigger(day_of_week='sun-thu', hour=1, minute=25, timezone=SGT), 
         kwargs={'context': app}
     )
     
