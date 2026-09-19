@@ -4,7 +4,7 @@ import threading
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from datetime import datetime
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
-from telegram.ext import Application, CallbackQueryHandler, ContextTypes
+from telegram.ext import Application, CallbackQueryHandler, CommandHandler, ContextTypes
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 
@@ -112,15 +112,13 @@ async def handle_button_click(update: Update, context: ContextTypes.DEFAULT_TYPE
     
     attendance_records[user.id] = {"name": display_name, "status": status}
     
-    # Send quick confirmation pop-up alert to user
     emoji = STATUS_CONFIG.get(status, {}).get("emoji", "👍")
     await query.answer(text=f"{emoji} {display_name}: Logged as {status}", show_alert=False)
 
-    # Dynamically update the live button counters on the poll message
     try:
         await query.edit_message_reply_markup(reply_markup=build_poll_keyboard())
     except Exception:
-        pass  # Ignore if no change in markup
+        pass
 
 async def send_consolidated_summary(context: ContextTypes.DEFAULT_TYPE):
     """Sends a cleanly formatted consolidated summary report."""
@@ -167,13 +165,25 @@ async def send_consolidated_summary(context: ContextTypes.DEFAULT_TYPE):
         parse_mode="Markdown"
     )
 
+# 3. Command Handlers for Manual Testing
+async def test_poll_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Manual trigger: /testpoll"""
+    await send_attendance_poll(context)
+
+async def test_summary_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Manual trigger: /testsummary"""
+    await send_consolidated_summary(context)
+
 def main():
     app = Application.builder().token(BOT_TOKEN).build()
+
+    # Callback and Slash Command Handlers
     app.add_handler(CallbackQueryHandler(handle_button_click, pattern="^att_"))
+    app.add_handler(CommandHandler("testpoll", test_poll_cmd))
+    app.add_handler(CommandHandler("testsummary", test_summary_cmd))
 
+    # Production Scheduler (Sunday 8:00 PM Poll, Monday 8:00 AM Summary SGT)
     scheduler = AsyncIOScheduler()
-
-    # Production Schedule (Sunday 8:00 PM Poll, Monday 8:00 AM Summary)
     scheduler.add_job(
         send_attendance_poll, 
         CronTrigger(day_of_week='sun', hour=20, minute=0, timezone='Asia/Singapore'), 
