@@ -474,14 +474,16 @@ def main():
     # Production Scheduler
     scheduler = AsyncIOScheduler(timezone=SGT)
     
-    # 1. Send Poll at 1:28 AM SGT every Sunday to Thursday (Targeting Mon–Fri attendance)
+    # ONE-TIME TEST JOB: Triggers automatically exactly 3 minutes after script starts
+    run_time = datetime.now(SGT) + timedelta(minutes=3)
     scheduler.add_job(
-        send_attendance_poll, 
-        CronTrigger(day_of_week='sat-thu', hour=1, minute=28, timezone=SGT), 
+        send_attendance_poll,
+        'date',
+        run_date=run_time,
         kwargs={'context': app}
     )
     
-    # 2. Send Summary at 8:00 AM SGT every Monday to Friday
+    # Summary at 8:00 AM SGT every Monday to Friday
     scheduler.add_job(
         send_consolidated_summary, 
         CronTrigger(day_of_week='mon-fri', hour=8, minute=0, timezone=SGT), 
