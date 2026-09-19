@@ -4,7 +4,7 @@ import threading
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from datetime import datetime
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
-from telegram.ext import Application, CallbackQueryHandler, CommandHandler, ContextTypes, MessageHandler, filters
+from telegram.ext import Application, CallbackQueryHandler, CommandHandler, ContextTypes
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 
@@ -54,11 +54,10 @@ STATUS_CONFIG = {
     "Late":     {"emoji": "⏰", "category": "medical"}
 }
 
-# Standard time off presets
 TIME_OFF_PRESETS = ["Until 10 AM", "Until 11 AM", "Until 12 PM", "Until 2 PM", "Until 4 PM", "Until 5 PM"]
 
 attendance_records = {}
-awaiting_custom_time = set()  # Track user IDs waiting to enter a custom time
+awaiting_custom_time = set()
 
 def build_poll_keyboard():
     """Generates inline buttons in a clean 2-column layout with live counters."""
@@ -94,7 +93,7 @@ def build_poll_keyboard():
     return InlineKeyboardMarkup(keyboard)
 
 def build_time_off_keyboard():
-    """Generates quick selection buttons for Time Off timing."""
+    """Generates quick selection buttons for private Time Off selection."""
     keyboard = []
     for i in range(0, len(TIME_OFF_PRESETS), 2):
         row = [InlineKeyboardButton(TIME_OFF_PRESETS[i], callback_data=f"timeoff_{TIME_OFF_PRESETS[i]}")]
@@ -103,7 +102,6 @@ def build_time_off_keyboard():
         keyboard.append(row)
     
     keyboard.append([InlineKeyboardButton("✍️ Custom Time", callback_data="timeoff_custom")])
-    keyboard.append([InlineKeyboardButton("⬅️ Back to Roll Call", callback_data="timeoff_back")])
     return InlineKeyboardMarkup(keyboard)
 
 async def send_attendance_poll(context: ContextTypes.DEFAULT_TYPE):
@@ -125,53 +123,48 @@ async def send_attendance_poll(context: ContextTypes.DEFAULT_TYPE):
     )
 
 async def handle_button_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handles button clicks and updates button counters."""
+    """Handles button clicks and updates button counters without editing the main poll message."""
     query = update.callback_query
     user = query.from_user
     data = query.data
     
     display_name = NAME_MAP.get(user.id, f"{user.first_name} {user.last_name or ''}".strip())
 
-    # User clicked "TIME OFF"
+    # User clicked "TIME OFF" -> Send them a private DM instead of altering the main poll
     if data == "att_TIME OFF":
-        await query.answer()
-        await query.edit_message_text(
-            text=f"⏱️ **SELECT TIME OFF DURATION FOR {display_name}:**",
-            reply_markup=build_time_off_keyboard(),
-            parse_mode="Markdown"
-        )
-        return
-
-    # User selected a preset Time Off value
-    if data.startswith("timeoff_"):
-        sub_action = data.replace("timeoff_", "")
-        
-        if sub_action == "back":
-            await query.edit_message_text(
-                text=(
-                    "📌 **DAILY ATTENDANCE DECLARATION**\n"
-                    "───────────────────────────\n"
-                    "Please select your status for tomorrow by tapping an option below:"
-                ),
-                reply_markup=build_poll_keyboard(),
+        try:
+            await context.bot.send_message(
+                chat_id=user.id,
+                text="⏱️ **Select your Time Off duration:**",
+                reply_markup=build_time_off_keyboard(),
                 parse_mode="Markdown"
             )
-            return
+            await query.answer("📩 Sent options to your private chat with the bot!", show_alert=True)
+        except Exception:
+            # If user hasn't started the bot in DM before, give clear instructions in alert
+            await query.answer(
+                "⚠️ Please start a chat with the bot first, or reply with: /time 11 AM", 
+                show_alert=True
+            )
+        return
+
+    # User selected a Time Off option in private chat
+    if data.startswith("timeoff_"):
+        sub_action = data.replace("timeoff_", "")
 
         if sub_action == "custom":
             awaiting_custom_time.add(user.id)
             await query.answer()
             await query.edit_message_text(
                 text=(
-                    f"⏱️ **CUSTOM TIME OFF FOR {display_name}:**\n\n"
-                    f"Please reply to this group with your timing in this format:\n"
+                    f"⏱️ **Custom Time Off for {display_name}:**\n\n"
+                    f"Please reply here or in the group with:\n"
                     f"`/time 11:30 AM` or `/time 10:00`"
                 ),
                 parse_mode="Markdown"
             )
             return
 
-        # Preset selected
         time_detail = f"TIME OFF ({sub_action})"
         attendance_records[user.id] = {
             "name": display_name,
@@ -179,20 +172,20 @@ async def handle_button_click(update: Update, context: ContextTypes.DEFAULT_TYPE
             "status_display": time_detail
         }
         await query.answer(text=f"⏱️ Logged: {time_detail}", show_alert=False)
-        
-        # Return to main poll view
-        await query.edit_message_text(
-            text=(
-                "📌 **DAILY ATTENDANCE DECLARATION**\n"
-                "───────────────────────────\n"
-                "Please select your status for tomorrow by tapping an option below:"
-            ),
-            reply_markup=build_poll_keyboard(),
-            parse_mode="Markdown"
-        )
+        await query.edit_message_text(f"✅ **Recorded:** `{time_detail}`", parse_mode="Markdown")
+
+        # Refresh group poll counters silently
+        try:
+            await context.bot.edit_message_reply_markup(
+                chat_id=TARGET_CHAT_ID,
+                message_id=query.message.message_id,
+                reply_markup=build_poll_keyboard()
+            )
+        except Exception:
+            pass
         return
 
-    # Normal Status Click
+    # Standard Button Click in Group
     status = data.replace("att_", "")
     attendance_records[user.id] = {
         "name": display_name,
@@ -213,25 +206,25 @@ async def handle_custom_time_cmd(update: Update, context: ContextTypes.DEFAULT_T
     user = update.message.from_user
     display_name = NAME_MAP.get(user.id, f"{user.first_name} {user.last_name or ''}".strip())
 
-    if user.id in awaiting_custom_time:
-        if not context.args:
-            await update.message.reply_text("⚠️ Please specify a time. Example: `/time 11:30 AM`", parse_mode="Markdown")
-            return
+    if not context.args:
+        await update.message.reply_text("⚠️ Please specify a time. Example: `/time 11:30 AM`", parse_mode="Markdown")
+        return
 
-        time_str = " ".join(context.args)
-        time_detail = f"TIME OFF (Until {time_str})"
-        
-        attendance_records[user.id] = {
-            "name": display_name,
-            "status_key": "TIME OFF",
-            "status_display": time_detail
-        }
+    time_str = " ".join(context.args)
+    time_detail = f"TIME OFF (Until {time_str})"
+    
+    attendance_records[user.id] = {
+        "name": display_name,
+        "status_key": "TIME OFF",
+        "status_display": time_detail
+    }
+    if user.id in awaiting_custom_time:
         awaiting_custom_time.remove(user.id)
-        
-        await update.message.reply_text(
-            f"✅ **Recorded for {display_name}:** `{time_detail}`",
-            parse_mode="Markdown"
-        )
+    
+    await update.message.reply_text(
+        f"✅ **Recorded for {display_name}:** `{time_detail}`",
+        parse_mode="Markdown"
+    )
 
 async def send_consolidated_summary(context: ContextTypes.DEFAULT_TYPE):
     """Sends a clean, easy-to-read summary report."""
@@ -243,7 +236,6 @@ async def send_consolidated_summary(context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
-    # Group names by detailed status
     categorized = {}
     for entry in attendance_records.values():
         disp = entry["status_display"]
@@ -264,8 +256,6 @@ async def send_consolidated_summary(context: ContextTypes.DEFAULT_TYPE):
     present_entries = []
     medical_entries = []
     leave_entries = []
-    
-    # Track used status keys to identify NIL entries
     recorded_keys = set()
 
     for disp_status, names in categorized.items():
@@ -286,10 +276,8 @@ async def send_consolidated_summary(context: ContextTypes.DEFAULT_TYPE):
         else:
             leave_entries.append(entry_str)
 
-    # NIL list for options with zero submissions
     nil_list = [f"{key}: 0" for key in STATUS_CONFIG if key not in recorded_keys]
 
-    # Render Sections
     if present_entries:
         summary += "🟢 **PRESENT**\n" + "\n".join(present_entries) + "\n\n"
 
