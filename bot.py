@@ -27,6 +27,7 @@ BOT_TOKEN = os.getenv("BOT_TOKEN")
 TARGET_CHAT_ID = int(os.getenv("TARGET_CHAT_ID", "0"))
 
 # Map Telegram User IDs (integers) to real display names
+# (Used to display specific names under "Pending Submission")
 NAME_MAP = {
     6298329418: "Kenneth Khor",  # Replace with actual Telegram User ID
 }
@@ -226,16 +227,24 @@ async def handle_custom_time_cmd(update: Update, context: ContextTypes.DEFAULT_T
     )
 
 async def send_consolidated_summary(context: ContextTypes.DEFAULT_TYPE):
-    """Sends a clean, executive-style dashboard report."""
+    """Sends a clean, executive-style dashboard report using dynamic chat member count."""
     today_str = datetime.now().strftime("%d %b %Y").upper()
     
+    # 1. Fetch live member count from Telegram (Subtract 1 for the Bot itself)
+    try:
+        chat_member_count = await context.bot.get_chat_member_count(TARGET_CHAT_ID)
+        total_personnel = max(1, chat_member_count - 1)
+    except Exception:
+        total_personnel = len(NAME_MAP) if NAME_MAP else len(attendance_records)
+
     if not attendance_records:
         await context.bot.send_message(
             chat_id=TARGET_CHAT_ID,
             text=(
-                f"🚨 **DAILY ATTENDANCE REPORT — {today_str}**\n"
+                f"🚨 **DAILY ROLL CALL REPORT — {today_str}**\n"
                 f"═══════════════════════════\n\n"
-                f"⚠️ **STATUS:** No declarations submitted for today's ATTENDANCE."
+                f"⚠️ **STATUS:** No declarations submitted for today's roll call.\n"
+                f"👥 **Total Chat Strength:** `{total_personnel}`"
             ),
             parse_mode="Markdown"
         )
@@ -263,7 +272,6 @@ async def send_consolidated_summary(context: ContextTypes.DEFAULT_TYPE):
             leave_count += 1
 
     total_responses = len(attendance_records)
-    total_personnel = len(NAME_MAP) if NAME_MAP else total_responses
     unsubmitted_ids = set(NAME_MAP.keys()) - set(attendance_records.keys()) if NAME_MAP else set()
     unsubmitted_names = [NAME_MAP[uid] for uid in unsubmitted_ids]
 
