@@ -13,7 +13,7 @@ class HealthCheckHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         self.send_response(200)
         self.end_headers()
-        self.wfile.write(b"Bot status: Healthy & Operational")
+        self.wfile.write(b"SYSTEM STATUS: ONLINE // ALL SYSTEMS NOMINAL")
 
 def run_health_check_server():
     port = int(os.getenv("PORT", 8080))
@@ -31,23 +31,23 @@ NAME_MAP = {
     6298329418: "Kenneth Khor",  # Replace with actual Telegram User ID
 }
 
-# Your exact 15 attendance status options with matching icons
+# 15 Attendance Status Options
 STATUS_CONFIG = {
-    "MC":      {"emoji": "🤒"},
-    "RSO":     {"emoji": "🏥"},
-    "RSI":     {"emoji": "🩺"},
-    "MA":      {"emoji": "💉"},
-    "LL":      {"emoji": "📝"},
-    "OL":      {"emoji": "📄"},
-    "OS":      {"emoji": "✈️"},
-    "OC":      {"emoji": "🌊"},
-    "OFF":     {"emoji": "🌴"},
-    "CCL/CSL": {"emoji": "🎓"},
-    "CL":      {"emoji": "🏠"},
-    "PL":      {"emoji": "👶"},
-    "OML":     {"emoji": "🎖️"},
-    "Others":  {"emoji": "❓"},
-    "Late":    {"emoji": "⏰"}
+    "MC":      {"emoji": "🤒", "type": "critical"},
+    "RSO":     {"emoji": "🏥", "type": "critical"},
+    "RSI":     {"emoji": "🩺", "type": "critical"},
+    "MA":      {"emoji": "💉", "type": "critical"},
+    "LL":      {"emoji": "📝", "type": "duty"},
+    "OL":      {"emoji": "📄", "type": "duty"},
+    "OS":      {"emoji": "✈️", "type": "duty"},
+    "OC":      {"emoji": "🌊", "type": "duty"},
+    "OFF":     {"emoji": "🌴", "type": "duty"},
+    "CCL/CSL": {"emoji": "🎓", "type": "duty"},
+    "CL":      {"emoji": "🏠", "type": "duty"},
+    "PL":      {"emoji": "👶", "type": "duty"},
+    "OML":     {"emoji": "🎖️", "type": "duty"},
+    "Others":  {"emoji": "❓", "type": "duty"},
+    "Late":    {"emoji": "⏰", "type": "critical"}
 }
 
 attendance_records = {}
@@ -62,7 +62,6 @@ def build_poll_keyboard():
     keyboard = []
     items = list(STATUS_CONFIG.items())
     
-    # Grid construction: 2 buttons per row
     for i in range(0, len(items), 2):
         row = []
         key1, cfg1 = items[i]
@@ -85,25 +84,26 @@ def build_poll_keyboard():
     return InlineKeyboardMarkup(keyboard)
 
 async def send_attendance_poll(context: ContextTypes.DEFAULT_TYPE):
-    """Sends the daily attendance poll."""
+    """Sends the daily attendance poll with HUD styling."""
     attendance_records.clear()
     
     poll_text = (
-        "📊 **DAILY ATTENDANCE DECLARATION**\n"
-        "━━━━━━━━━━━━━━━━━━━━━━━━━\n"
-        "> Please select your attendance status by tapping an option below.\n\n"
-        "⚡ *Live counts update on the buttons in real time.*"
+        "🌐 **[ UNIT ATTENDANCE DISPATCH ]**\n"
+        "<code>========================================</code>\n"
+        "> 📡 **ACTION REQUIRED:** Submit your status for tomorrow.\n"
+       
+        "<code>========================================</code>"
     )
 
     await context.bot.send_message(
         chat_id=TARGET_CHAT_ID,
         text=poll_text,
         reply_markup=build_poll_keyboard(),
-        parse_mode="Markdown"
+        parse_mode="HTML"
     )
 
 async def handle_button_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handles button clicks, maps names, and updates button counters."""
+    """Handles button clicks and updates button counters."""
     query = update.callback_query
     user = query.from_user
     
@@ -113,20 +113,32 @@ async def handle_button_click(update: Update, context: ContextTypes.DEFAULT_TYPE
     attendance_records[user.id] = {"name": display_name, "status": status}
     
     emoji = STATUS_CONFIG.get(status, {}).get("emoji", "👍")
-    await query.answer(text=f"{emoji} {display_name}: Logged as {status}", show_alert=False)
+    await query.answer(text=f"[{status}] ACKNOWLEDGED // {display_name}", show_alert=False)
 
     try:
         await query.edit_message_reply_markup(reply_markup=build_poll_keyboard())
     except Exception:
         pass
 
+def generate_progress_bar(current, total, length=10):
+    """Generates a visual HUD progress bar."""
+    if total <= 0:
+        return "░" * length
+    percent = min(1.0, max(0.0, current / total))
+    filled = int(round(length * percent))
+    return "█" * filled + "░" * (length - filled)
+
 async def send_consolidated_summary(context: ContextTypes.DEFAULT_TYPE):
-    """Sends a formatted summary following your exact list order."""
+    """Sends an advanced, futuristic HUD-style attendance report."""
     if not attendance_records:
         await context.bot.send_message(
             chat_id=TARGET_CHAT_ID,
-            text="⚠️ **ATTENDANCE SUMMARY**\n\n> No responses recorded for this roll call.",
-            parse_mode="Markdown"
+            text=(
+                "⚠️ <b>[ TELEMETRY ALERT ]</b>\n"
+                "<code>========================================</code>\n"
+                "❌ <b>NO RESPONSES RECORDED FOR THIS ROLL CALL CYCLE.</b>"
+            ),
+            parse_mode="HTML"
         )
         return
 
@@ -135,13 +147,23 @@ async def send_consolidated_summary(context: ContextTypes.DEFAULT_TYPE):
         if entry["status"] in categorized:
             categorized[entry["status"]].append(entry["name"])
 
-    today_str = datetime.now().strftime("%d %b %Y")
-    
+    today_str = datetime.now().strftime("%d %b %Y // %H:%M SGT")
+    total_responses = len(attendance_records)
+    total_personnel = len(NAME_MAP) if NAME_MAP else total_responses
+    pending_count = max(0, total_personnel - total_responses)
+    pct = int((total_responses / total_personnel) * 100) if total_personnel > 0 else 100
+    bar = generate_progress_bar(total_responses, total_personnel)
+
+    # FUTURISTIC HEADER
     summary = (
-        f"📋 **CONSOLIDATED ATTENDANCE REPORT**\n"
-        f"📅 **Date:** `{today_str}`\n"
-        f"━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+        f"<b>[ CONSOLIDATED MANPOWER REPORT ]</b>\n"
+        f"<code>SYS.DATE : {today_str}</code>\n"
+        f"<code>========================================</code>\n\n"
     )
+
+    critical_list = []
+    duty_list = []
+    nil_list = []
 
     for status_key, config in STATUS_CONFIG.items():
         names = categorized[status_key]
@@ -149,20 +171,46 @@ async def send_consolidated_summary(context: ContextTypes.DEFAULT_TYPE):
         emoji = config["emoji"]
         
         if names:
-            name_list = ", ".join(names)
-            summary += f"{emoji} **{status_key}: {count}** ({name_list})\n"
+            formatted_names = ", ".join([f"<code>{n}</code>" for n in names])
+            entry_str = f"{emoji} <b>{status_key}</b> [{count}]\n   └ {formatted_names}"
+            
+            if config["type"] == "critical":
+                critical_list.append(entry_str)
+            else:
+                duty_list.append(entry_str)
         else:
-            summary += f"{emoji} **{status_key}: 0**\n"
+            nil_list.append(f"<code>{status_key}:0</code>")
 
+    # SECTION 1: MEDICAL & CRITICAL ABSENCE
+    if critical_list:
+        summary += "🚨 <b>[ MEDICAL / CRITICAL STATUS ]</b>\n"
+        summary += "\n".join(critical_list) + "\n\n"
+
+    # SECTION 2: LEAVE & DUTY DISPATCH
+    if duty_list:
+        summary += "🔷 <b>[ ACTIVE DISPATCH / LEAVE ]</b>\n"
+        summary += "\n".join(duty_list) + "\n\n"
+
+    # SECTION 3: NIL LOGS
+    if nil_list:
+        summary += "<code>----------------------------------------</code>\n"
+        summary += "⚪ <b>[ NIL REPORT ]</b>\n"
+        summary += "<code>" + " • ".join(nil_list) + "</code>\n\n"
+
+    # SECTION 4: HUD SYSTEM OVERVIEW & PROGRESS
     summary += (
-        f"\n━━━━━━━━━━━━━━━━━━━━━━━━━\n"
-        f"👥 **Total Submissions:** `{len(attendance_records)}`"
+        f"<code>========================================</code>\n"
+        f"<b>[ SYSTEM TELEMETRY ]</b>\n"
+        f"<b>SUBMISSION RATE :</b> [{bar}] <b>{pct}%</b>\n"
+        f"• <b>LOGGED PERSONNEL   :</b> <code>{total_responses} / {total_personnel}</code>\n"
+        f"• <b>PENDING TELEMETRY :</b> <code>{pending_count}</code>\n"
+        f"<code>========================================</code>"
     )
 
     await context.bot.send_message(
         chat_id=TARGET_CHAT_ID, 
         text=summary, 
-        parse_mode="Markdown"
+        parse_mode="HTML"
     )
 
 # 3. Command Handlers for Manual Testing
