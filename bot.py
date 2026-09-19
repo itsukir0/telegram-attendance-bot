@@ -27,7 +27,6 @@ BOT_TOKEN = os.getenv("BOT_TOKEN")
 TARGET_CHAT_ID = int(os.getenv("TARGET_CHAT_ID", "0"))
 
 # Map Telegram User IDs (integers) to real display names
-# (Used to display specific names under "Pending Submission")
 NAME_MAP = {
     6298329418: "Kenneth Khor",  # Replace with actual Telegram User ID
 }
@@ -59,12 +58,13 @@ TIME_OFF_PRESETS = ["Until 10 AM", "Until 11 AM", "Until 12 PM", "Until 2 PM", "
 
 attendance_records = {}
 awaiting_custom_time = set()
+awaiting_custom_others = set()
 
 def build_poll_keyboard():
     """Generates inline buttons in a clean 2-column layout with live counters."""
     counts = {}
     for record in attendance_records.values():
-        st = record["status_display"]
+        st = record["status_key"]
         counts[st] = counts.get(st, 0) + 1
 
     keyboard = []
@@ -109,6 +109,7 @@ async def send_attendance_poll(context: ContextTypes.DEFAULT_TYPE):
     """Sends the daily attendance poll."""
     attendance_records.clear()
     awaiting_custom_time.clear()
+    awaiting_custom_others.clear()
     
     poll_text = (
         "📌 **DAILY ATTENDANCE DECLARATION**\n"
@@ -131,7 +132,7 @@ async def handle_button_click(update: Update, context: ContextTypes.DEFAULT_TYPE
     
     display_name = NAME_MAP.get(user.id, f"{user.first_name} {user.last_name or ''}".strip())
 
-    # User clicked "TIME OFF" -> Send them a private DM instead of altering the main poll
+    # User clicked "TIME OFF" -> Send them a private DM
     if data == "att_TIME OFF":
         try:
             await context.bot.send_message(
@@ -143,7 +144,28 @@ async def handle_button_click(update: Update, context: ContextTypes.DEFAULT_TYPE
             await query.answer("📩 Sent options to your private chat with the bot!", show_alert=True)
         except Exception:
             await query.answer(
-                "⚠️ Please start a chat with the bot first, or reply with: /time 11 AM", 
+                "⚠️ Bot couldn't DM you! Please tap the bot's profile and press Start.\nAlternatively, reply here with: /time 11 AM", 
+                show_alert=True
+            )
+        return
+
+    # User clicked "Others" -> Prompt for custom status reason via DM
+    if data == "att_Others":
+        awaiting_custom_others.add(user.id)
+        try:
+            await context.bot.send_message(
+                chat_id=user.id,
+                text=(
+                    f"❓ **Custom Status for {display_name}:**\n\n"
+                    f"Please reply here or in the group with your reason using:\n"
+                    f"`/other Off-in-Lieu` or `/other Course Training`"
+                ),
+                parse_mode="Markdown"
+            )
+            await query.answer("📩 Sent prompt to your private chat with the bot!", show_alert=True)
+        except Exception:
+            await query.answer(
+                "⚠️ Bot couldn't DM you! Please tap the bot's profile and press Start.\nAlternatively, reply here with: /other Your Reason", 
                 show_alert=True
             )
         return
@@ -226,6 +248,31 @@ async def handle_custom_time_cmd(update: Update, context: ContextTypes.DEFAULT_T
         parse_mode="Markdown"
     )
 
+async def handle_custom_other_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handles custom 'Others' commands like /other Off-in-Lieu."""
+    user = update.message.from_user
+    display_name = NAME_MAP.get(user.id, f"{user.first_name} {user.last_name or ''}".strip())
+
+    if not context.args:
+        await update.message.reply_text("⚠️ Please specify your status. Example: `/other Off-in-Lieu`", parse_mode="Markdown")
+        return
+
+    other_reason = " ".join(context.args)
+    other_detail = f"Others ({other_reason})"
+    
+    attendance_records[user.id] = {
+        "name": display_name,
+        "status_key": "Others",
+        "status_display": other_detail
+    }
+    if user.id in awaiting_custom_others:
+        awaiting_custom_others.remove(user.id)
+    
+    await update.message.reply_text(
+        f"✅ **Recorded for {display_name}:** `{other_detail}`",
+        parse_mode="Markdown"
+    )
+
 async def send_consolidated_summary(context: ContextTypes.DEFAULT_TYPE):
     """Sends a clean, executive-style dashboard report showing total responses and non-responses."""
     today_str = datetime.now().strftime("%d %b %Y").upper()
@@ -246,7 +293,7 @@ async def send_consolidated_summary(context: ContextTypes.DEFAULT_TYPE):
             text=(
                 f"🚨 **DAILY ATTENDANCE REPORT — {today_str}**\n"
                 f"═══════════════════════════\n\n"
-                f"⚠️ **STATUS:** No declaration submitted for today's attendance.\n"
+                f"⚠️ **STATUS:** No declarations submitted for today's attendance.\n"
                 f"👥 **Total Strength:** `{total_personnel}`\n"
                 f"⚠️ **Unaccounted / No Response:** `{total_personnel}` (100%)"
             ),
@@ -266,7 +313,7 @@ async def send_consolidated_summary(context: ContextTypes.DEFAULT_TYPE):
             categorized[disp] = []
         categorized[disp].append(entry["name"])
 
-        base_key = disp.split(" (")[0]
+        base_key = entry["status_key"]
         cat = STATUS_CONFIG.get(base_key, {}).get("category", "leave")
         if cat == "present":
             present_count += 1
@@ -309,7 +356,7 @@ async def send_consolidated_summary(context: ContextTypes.DEFAULT_TYPE):
         emoji = cfg["emoji"]
         name_str = ", ".join(f"`{n}`" for n in names)
         
-        entry_str = f"  {emoji} **{disp_status}** ({count}):\n   └ {name_str}"
+        entry_str = f"  {emoji} **{disp_status}** ({count}):\n    └ {name_str}"
 
         if cfg["category"] == "present":
             present_entries.append(entry_str)
@@ -331,7 +378,7 @@ async def send_consolidated_summary(context: ContextTypes.DEFAULT_TYPE):
     # Highlight Unsubmitted Personnel
     if unsubmitted_names:
         pending_str = ", ".join(f"`{n}`" for n in unsubmitted_names)
-        summary += f"⚠️ **PENDING SUBMISSION ({len(unsubmitted_names)}):**\n   └ {pending_str}\n\n"
+        summary += f"⚠️ **PENDING SUBMISSION ({len(unsubmitted_names)}):**\n    └ {pending_str}\n\n"
 
     # Compact NIL Line
     nil_list = [key for key in STATUS_CONFIG if key not in recorded_keys]
@@ -364,6 +411,7 @@ def main():
     # Handlers
     app.add_handler(CallbackQueryHandler(handle_button_click))
     app.add_handler(CommandHandler("time", handle_custom_time_cmd))
+    app.add_handler(CommandHandler("other", handle_custom_other_cmd))
     app.add_handler(CommandHandler("testpoll", test_poll_cmd))
     app.add_handler(CommandHandler("testsummary", test_summary_cmd))
 
