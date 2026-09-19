@@ -111,7 +111,7 @@ async def send_attendance_poll(context: ContextTypes.DEFAULT_TYPE):
     
     poll_text = (
         "📌 **DAILY ATTENDANCE DECLARATION**\n"
-        "───────────────────────────\n"
+        "═══════════════════════════\n"
         "Please select your status for tomorrow by tapping an option below:"
     )
 
@@ -141,7 +141,6 @@ async def handle_button_click(update: Update, context: ContextTypes.DEFAULT_TYPE
             )
             await query.answer("📩 Sent options to your private chat with the bot!", show_alert=True)
         except Exception:
-            # If user hasn't started the bot in DM before, give clear instructions in alert
             await query.answer(
                 "⚠️ Please start a chat with the bot first, or reply with: /time 11 AM", 
                 show_alert=True
@@ -227,35 +226,64 @@ async def handle_custom_time_cmd(update: Update, context: ContextTypes.DEFAULT_T
     )
 
 async def send_consolidated_summary(context: ContextTypes.DEFAULT_TYPE):
-    """Sends a clean, easy-to-read summary report."""
+    """Sends a clean, executive-style dashboard report."""
+    today_str = datetime.now().strftime("%d %b %Y").upper()
+    
     if not attendance_records:
         await context.bot.send_message(
             chat_id=TARGET_CHAT_ID,
-            text="⚠️ **ATTENDANCE SUMMARY**\n\n> No responses recorded for today's roll call.",
+            text=(
+                f"🚨 **DAILY ROLL CALL REPORT — {today_str}**\n"
+                f"═══════════════════════════\n\n"
+                f"⚠️ **STATUS:** No declarations submitted for today's roll call."
+            ),
             parse_mode="Markdown"
         )
         return
 
+    # Group records by status display
     categorized = {}
+    present_count = 0
+    leave_count = 0
+    medical_count = 0
+
     for entry in attendance_records.values():
         disp = entry["status_display"]
         if disp not in categorized:
             categorized[disp] = []
         categorized[disp].append(entry["name"])
 
-    today_str = datetime.now().strftime("%d %b %Y")
+        base_key = disp.split(" (")[0]
+        cat = STATUS_CONFIG.get(base_key, {}).get("category", "leave")
+        if cat == "present":
+            present_count += 1
+        elif cat == "medical":
+            medical_count += 1
+        else:
+            leave_count += 1
+
     total_responses = len(attendance_records)
     total_personnel = len(NAME_MAP) if NAME_MAP else total_responses
-    pending_count = max(0, total_personnel - total_responses)
+    unsubmitted_ids = set(NAME_MAP.keys()) - set(attendance_records.keys()) if NAME_MAP else set()
+    unsubmitted_names = [NAME_MAP[uid] for uid in unsubmitted_ids]
+
+    # Calculate strength stats
+    present_pct = int((present_count / total_personnel) * 100) if total_personnel else 0
+    absent_pct = 100 - present_pct
 
     summary = (
-        f"📋 **ATTENDANCE SUMMARY — {today_str}**\n"
+        f"📊 **DAILY ROLL CALL REPORT — {today_str}**\n"
+        f"═══════════════════════════\n\n"
+        f"📈 **PARADE STATE & STRENGTH OVERVIEW**\n"
+        f"• **Total Roster Strength:** `{total_personnel}`\n"
+        f"• **Present Strength:** `{present_count}/{total_personnel}` (`{present_pct}%`)\n"
+        f"• **Absent / On Leave:** `{total_personnel - present_count}/{total_personnel}` (`{absent_pct}%`)\n"
         f"───────────────────────────\n\n"
     )
 
     present_entries = []
-    medical_entries = []
     leave_entries = []
+    medical_entries = []
     recorded_keys = set()
 
     for disp_status, names in categorized.items():
@@ -265,9 +293,9 @@ async def send_consolidated_summary(context: ContextTypes.DEFAULT_TYPE):
         
         cfg = STATUS_CONFIG.get(base_key, {"emoji": "🔹", "category": "leave"})
         emoji = cfg["emoji"]
-        name_str = ", ".join(names)
+        name_str = ", ".join(f"`{n}`" for n in names)
         
-        entry_str = f"{emoji} **{disp_status} ({count})**: {name_str}"
+        entry_str = f"  {emoji} **{disp_status}** ({count}):\n   └ {name_str}"
 
         if cfg["category"] == "present":
             present_entries.append(entry_str)
@@ -276,24 +304,29 @@ async def send_consolidated_summary(context: ContextTypes.DEFAULT_TYPE):
         else:
             leave_entries.append(entry_str)
 
-    nil_list = [f"{key}: 0" for key in STATUS_CONFIG if key not in recorded_keys]
-
+    # Render Active Status Sections
     if present_entries:
-        summary += "🟢 **PRESENT**\n" + "\n".join(present_entries) + "\n\n"
+        summary += "🟢 **PRESENT / ON DUTY**\n" + "\n\n".join(present_entries) + "\n\n"
 
     if leave_entries:
-        summary += "🌅 **LEAVE / OFF / DUTY**\n" + "\n".join(leave_entries) + "\n\n"
+        summary += "🌅 **LEAVE / OFF / OVERSEAS**\n" + "\n\n".join(leave_entries) + "\n\n"
 
     if medical_entries:
-        summary += "🔴 **MEDICAL / ABSENT**\n" + "\n".join(medical_entries) + "\n\n"
+        summary += "🔴 **MEDICAL / UNEXCUSED ABSENCE**\n" + "\n\n".join(medical_entries) + "\n\n"
 
+    # Highlight Unsubmitted Personnel
+    if unsubmitted_names:
+        pending_str = ", ".join(f"`{n}`" for n in unsubmitted_names)
+        summary += f"⚠️ **PENDING SUBMISSION ({len(unsubmitted_names)}):**\n   └ {pending_str}\n\n"
+
+    # Compact NIL Line
+    nil_list = [key for key in STATUS_CONFIG if key not in recorded_keys]
     if nil_list:
-        summary += "⚪ **NIL:** " + " • ".join(nil_list) + "\n\n"
+        summary += f"⚪ **NIL REPORT:** `{', '.join(nil_list)}`\n\n"
 
     summary += (
-        f"───────────────────────────\n"
-        f"👥 **Total Submitted:** {total_responses}/{total_personnel} "
-        f"| **Pending:** {pending_count}"
+        f"═══════════════════════════\n"
+        f"⚡ *Generated automatically at {datetime.now().strftime('%H:%M SGT')}*"
     )
 
     await context.bot.send_message(
