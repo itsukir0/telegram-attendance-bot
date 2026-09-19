@@ -1,16 +1,32 @@
 import os
 import logging
+import threading
+from http.server import HTTPServer, BaseHTTPRequestHandler
 from datetime import datetime
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import Application, CallbackQueryHandler, ContextTypes
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 
-# Fetch secrets from environment variables (configured safely on Render)
+# 1. Dummy Web Server to keep Render's Free Web Service happy
+class HealthCheckHandler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200)
+        self.end_headers()
+        self.wfile.write(b"Bot is live!")
+
+def run_health_check_server():
+    port = int(os.getenv("PORT", 8080))
+    server = HTTPServer(('0.0.0.0', port), HealthCheckHandler)
+    server.serve_forever()
+
+# Start dummy server in a background thread
+threading.Thread(target=run_health_check_server, daemon=True).start()
+
+# 2. Main Telegram Bot Code
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 TARGET_CHAT_ID = int(os.getenv("TARGET_CHAT_ID", "0"))
 
-# In-memory attendance storage
 attendance_records = {}
 STATUS_OPTIONS = ["Present", "Off", "MC", "MA", "OS", "Others"]
 
@@ -68,9 +84,7 @@ def main():
     app.add_handler(CallbackQueryHandler(handle_button_click, pattern="^att_"))
 
     scheduler = AsyncIOScheduler()
-    # Triggers Sunday at 20:00 (8:00 PM)
     scheduler.add_job(send_attendance_poll, CronTrigger(day_of_week='sun', hour=20, minute=0), args=[app])
-    # Triggers Monday at 08:00 (8:00 AM)
     scheduler.add_job(send_consolidated_summary, CronTrigger(day_of_week='mon', hour=8, minute=0), args=[app])
 
     scheduler.start()
