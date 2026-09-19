@@ -13,7 +13,7 @@ class HealthCheckHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         self.send_response(200)
         self.end_headers()
-        self.wfile.write(b"SYSTEM STATUS: ONLINE // ALL SYSTEMS NOMINAL")
+        self.wfile.write(b"Bot is online.")
 
 def run_health_check_server():
     port = int(os.getenv("PORT", 8080))
@@ -33,27 +33,27 @@ NAME_MAP = {
 
 # 15 Attendance Status Options
 STATUS_CONFIG = {
-    "MC":      {"emoji": "🤒", "type": "critical"},
-    "RSO":     {"emoji": "🏥", "type": "critical"},
-    "RSI":     {"emoji": "🩺", "type": "critical"},
-    "MA":      {"emoji": "💉", "type": "critical"},
-    "LL":      {"emoji": "📝", "type": "duty"},
-    "OL":      {"emoji": "📄", "type": "duty"},
-    "OS":      {"emoji": "✈️", "type": "duty"},
-    "OC":      {"emoji": "🌊", "type": "duty"},
-    "OFF":     {"emoji": "🌴", "type": "duty"},
-    "CCL/CSL": {"emoji": "🎓", "type": "duty"},
-    "CL":      {"emoji": "🏠", "type": "duty"},
-    "PL":      {"emoji": "👶", "type": "duty"},
-    "OML":     {"emoji": "🎖️", "type": "duty"},
-    "Others":  {"emoji": "❓", "type": "duty"},
-    "Late":    {"emoji": "⏰", "type": "critical"}
+    "MC":      {"emoji": "🤒", "category": "medical"},
+    "RSO":     {"emoji": "🏥", "category": "medical"},
+    "RSI":     {"emoji": "🩺", "category": "medical"},
+    "MA":      {"emoji": "💉", "category": "medical"},
+    "LL":      {"emoji": "📝", "category": "leave"},
+    "OL":      {"emoji": "📄", "category": "leave"},
+    "OS":      {"emoji": "✈️", "category": "leave"},
+    "OC":      {"emoji": "🌊", "category": "leave"},
+    "OFF":     {"emoji": "🌴", "category": "leave"},
+    "CCL/CSL": {"emoji": "🎓", "category": "leave"},
+    "CL":      {"emoji": "🏠", "category": "leave"},
+    "PL":      {"emoji": "👶", "category": "leave"},
+    "OML":     {"emoji": "🎖️", "category": "leave"},
+    "Others":  {"emoji": "❓", "category": "leave"},
+    "Late":    {"emoji": "⏰", "category": "medical"}
 }
 
 attendance_records = {}
 
 def build_poll_keyboard():
-    """Generates inline buttons in a 2-column layout with live counters."""
+    """Generates inline buttons in a clean 2-column layout with live counters."""
     counts = {key: 0 for key in STATUS_CONFIG}
     for record in attendance_records.values():
         if record["status"] in counts:
@@ -84,22 +84,20 @@ def build_poll_keyboard():
     return InlineKeyboardMarkup(keyboard)
 
 async def send_attendance_poll(context: ContextTypes.DEFAULT_TYPE):
-    """Sends the daily attendance poll with HUD styling."""
+    """Sends the daily attendance poll."""
     attendance_records.clear()
     
     poll_text = (
-        "🌐 **[ UNIT ATTENDANCE DISPATCH ]**\n"
-        "<code>========================================</code>\n"
-        "> 📡 **ACTION REQUIRED:** Submit your status for tomorrow.\n"
-       
-        "<code>========================================</code>"
+        "📌 **DAILY ATTENDANCE DECLARATION**\n"
+        "───────────────────────────\n"
+        "Please select your status for tomorrow by tapping an option below:"
     )
 
     await context.bot.send_message(
         chat_id=TARGET_CHAT_ID,
         text=poll_text,
         reply_markup=build_poll_keyboard(),
-        parse_mode="HTML"
+        parse_mode="Markdown"
     )
 
 async def handle_button_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -113,32 +111,20 @@ async def handle_button_click(update: Update, context: ContextTypes.DEFAULT_TYPE
     attendance_records[user.id] = {"name": display_name, "status": status}
     
     emoji = STATUS_CONFIG.get(status, {}).get("emoji", "👍")
-    await query.answer(text=f"[{status}] ACKNOWLEDGED // {display_name}", show_alert=False)
+    await query.answer(text=f"{emoji} Logged: {status} ({display_name})", show_alert=False)
 
     try:
         await query.edit_message_reply_markup(reply_markup=build_poll_keyboard())
     except Exception:
         pass
 
-def generate_progress_bar(current, total, length=10):
-    """Generates a visual HUD progress bar."""
-    if total <= 0:
-        return "░" * length
-    percent = min(1.0, max(0.0, current / total))
-    filled = int(round(length * percent))
-    return "█" * filled + "░" * (length - filled)
-
 async def send_consolidated_summary(context: ContextTypes.DEFAULT_TYPE):
-    """Sends an advanced, futuristic HUD-style attendance report."""
+    """Sends a clean, easy-to-read summary report."""
     if not attendance_records:
         await context.bot.send_message(
             chat_id=TARGET_CHAT_ID,
-            text=(
-                "⚠️ <b>[ TELEMETRY ALERT ]</b>\n"
-                "<code>========================================</code>\n"
-                "❌ <b>NO RESPONSES RECORDED FOR THIS ROLL CALL CYCLE.</b>"
-            ),
-            parse_mode="HTML"
+            text="⚠️ **ATTENDANCE SUMMARY**\n\n> No responses recorded for today's roll call.",
+            parse_mode="Markdown"
         )
         return
 
@@ -147,22 +133,18 @@ async def send_consolidated_summary(context: ContextTypes.DEFAULT_TYPE):
         if entry["status"] in categorized:
             categorized[entry["status"]].append(entry["name"])
 
-    today_str = datetime.now().strftime("%d %b %Y // %H:%M SGT")
+    today_str = datetime.now().strftime("%d %b %Y")
     total_responses = len(attendance_records)
     total_personnel = len(NAME_MAP) if NAME_MAP else total_responses
     pending_count = max(0, total_personnel - total_responses)
-    pct = int((total_responses / total_personnel) * 100) if total_personnel > 0 else 100
-    bar = generate_progress_bar(total_responses, total_personnel)
 
-    # FUTURISTIC HEADER
     summary = (
-        f"<b>[ CONSOLIDATED MANPOWER REPORT ]</b>\n"
-        f"<code>SYS.DATE : {today_str}</code>\n"
-        f"<code>========================================</code>\n\n"
+        f"📋 **ATTENDANCE SUMMARY — {today_str}**\n"
+        f"───────────────────────────\n\n"
     )
 
-    critical_list = []
-    duty_list = []
+    medical_entries = []
+    leave_entries = []
     nil_list = []
 
     for status_key, config in STATUS_CONFIG.items():
@@ -171,46 +153,36 @@ async def send_consolidated_summary(context: ContextTypes.DEFAULT_TYPE):
         emoji = config["emoji"]
         
         if names:
-            formatted_names = ", ".join([f"<code>{n}</code>" for n in names])
-            entry_str = f"{emoji} <b>{status_key}</b> [{count}]\n   └ {formatted_names}"
-            
-            if config["type"] == "critical":
-                critical_list.append(entry_str)
+            name_str = ", ".join(names)
+            entry = f"{emoji} **{status_key} ({count})**: {name_str}"
+            if config["category"] == "medical":
+                medical_entries.append(entry)
             else:
-                duty_list.append(entry_str)
+                leave_entries.append(entry)
         else:
-            nil_list.append(f"<code>{status_key}:0</code>")
+            nil_list.append(f"{status_key}: 0")
 
-    # SECTION 1: MEDICAL & CRITICAL ABSENCE
-    if critical_list:
-        summary += "🚨 <b>[ MEDICAL / CRITICAL STATUS ]</b>\n"
-        summary += "\n".join(critical_list) + "\n\n"
+    # Display active statuses cleanly
+    if medical_entries:
+        summary += "🔴 **MEDICAL / ABSENT**\n" + "\n".join(medical_entries) + "\n\n"
 
-    # SECTION 2: LEAVE & DUTY DISPATCH
-    if duty_list:
-        summary += "🔷 <b>[ ACTIVE DISPATCH / LEAVE ]</b>\n"
-        summary += "\n".join(duty_list) + "\n\n"
+    if leave_entries:
+        summary += "🟢 **LEAVE / DUTY**\n" + "\n".join(leave_entries) + "\n\n"
 
-    # SECTION 3: NIL LOGS
+    # Compact NIL report line at bottom
     if nil_list:
-        summary += "<code>----------------------------------------</code>\n"
-        summary += "⚪ <b>[ NIL REPORT ]</b>\n"
-        summary += "<code>" + " • ".join(nil_list) + "</code>\n\n"
+        summary += "⚪ **NIL:** " + " • ".join(nil_list) + "\n\n"
 
-    # SECTION 4: HUD SYSTEM OVERVIEW & PROGRESS
     summary += (
-        f"<code>========================================</code>\n"
-        f"<b>[ SYSTEM TELEMETRY ]</b>\n"
-        f"<b>SUBMISSION RATE :</b> [{bar}] <b>{pct}%</b>\n"
-        f"• <b>LOGGED PERSONNEL   :</b> <code>{total_responses} / {total_personnel}</code>\n"
-        f"• <b>PENDING TELEMETRY :</b> <code>{pending_count}</code>\n"
-        f"<code>========================================</code>"
+        f"───────────────────────────\n"
+        f"👥 **Total Submitted:** {total_responses}/{total_personnel} "
+        f"| **Pending:** {pending_count}"
     )
 
     await context.bot.send_message(
         chat_id=TARGET_CHAT_ID, 
         text=summary, 
-        parse_mode="HTML"
+        parse_mode="Markdown"
     )
 
 # 3. Command Handlers for Manual Testing
