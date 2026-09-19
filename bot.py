@@ -28,71 +28,71 @@ TARGET_CHAT_ID = int(os.getenv("TARGET_CHAT_ID", "0"))
 
 # Map Telegram User IDs (integers) to real display names
 NAME_MAP = {
-    6298329418: "Kenneth Khor",  # Replace with actual Telegram User ID
+    123456789: "Kenneth Khor",  # Replace with actual Telegram User ID
 }
 
-# Status definitions with corresponding UI icons
+# Your exact 15 attendance status options with matching icons
 STATUS_CONFIG = {
-    "Present": {"emoji": "✅", "label": "Present"},
-    "Off":     {"emoji": "🌴", "label": "Off"},
-    "MC":      {"emoji": "🤒", "label": "MC"},
-    "MA":      {"emoji": "🏥", "label": "MA"},
-    "OS":      {"emoji": "✈️", "label": "OS"},
-    "Others":  {"emoji": "❓", "label": "Others"}
+    "MC":      {"emoji": "🤒"},
+    "RSO":     {"emoji": "🏥"},
+    "RSI":     {"emoji": "🩺"},
+    "MA":      {"emoji": "💉"},
+    "LL":      {"emoji": "📝"},
+    "OL":      {"emoji": "📄"},
+    "OS":      {"emoji": "✈️"},
+    "OC":      {"emoji": "🌊"},
+    "OFF":     {"emoji": "🌴"},
+    "CCL/CSL": {"emoji": "🎓"},
+    "CL":      {"emoji": "🏠"},
+    "PL":      {"emoji": "👶"},
+    "OML":     {"emoji": "🎖️"},
+    "Others":  {"emoji": "❓"},
+    "Late":    {"emoji": "⏰"}
 }
 
 attendance_records = {}
 
 def build_poll_keyboard():
-    """Generates inline buttons with live submission counters."""
+    """Generates inline buttons in a 2-column layout with live counters."""
     counts = {key: 0 for key in STATUS_CONFIG}
     for record in attendance_records.values():
         if record["status"] in counts:
             counts[record["status"]] += 1
 
-    keyboard = [
-        [
+    keyboard = []
+    items = list(STATUS_CONFIG.items())
+    
+    # Grid construction: 2 buttons per row
+    for i in range(0, len(items), 2):
+        row = []
+        key1, cfg1 = items[i]
+        row.append(
             InlineKeyboardButton(
-                f"{STATUS_CONFIG['Present']['emoji']} Present ({counts['Present']})", 
-                callback_data="att_Present"
-            ),
-            InlineKeyboardButton(
-                f"{STATUS_CONFIG['Off']['emoji']} Off ({counts['Off']})", 
-                callback_data="att_Off"
+                f"{cfg1['emoji']} {key1} ({counts[key1]})", 
+                callback_data=f"att_{key1}"
             )
-        ],
-        [
-            InlineKeyboardButton(
-                f"{STATUS_CONFIG['MC']['emoji']} MC ({counts['MC']})", 
-                callback_data="att_MC"
-            ),
-            InlineKeyboardButton(
-                f"{STATUS_CONFIG['MA']['emoji']} MA ({counts['MA']})", 
-                callback_data="att_MA"
+        )
+        if i + 1 < len(items):
+            key2, cfg2 = items[i + 1]
+            row.append(
+                InlineKeyboardButton(
+                    f"{cfg2['emoji']} {key2} ({counts[key2]})", 
+                    callback_data=f"att_{key2}"
+                )
             )
-        ],
-        [
-            InlineKeyboardButton(
-                f"{STATUS_CONFIG['OS']['emoji']} OS ({counts['OS']})", 
-                callback_data="att_OS"
-            ),
-            InlineKeyboardButton(
-                f"{STATUS_CONFIG['Others']['emoji']} Others ({counts['Others']})", 
-                callback_data="att_Others"
-            )
-        ]
-    ]
+        keyboard.append(row)
+
     return InlineKeyboardMarkup(keyboard)
 
 async def send_attendance_poll(context: ContextTypes.DEFAULT_TYPE):
-    """Sends the daily attendance poll with enhanced formatting."""
+    """Sends the daily attendance poll."""
     attendance_records.clear()
     
     poll_text = (
         "📊 **DAILY ATTENDANCE DECLARATION**\n"
         "━━━━━━━━━━━━━━━━━━━━━━━━━\n"
-        "> Please select your attendance status for tomorrow by tapping one of the options below.\n\n"
-        "⚡ *Live responses will update on the buttons in real time.*"
+        "> Please select your attendance status by tapping an option below.\n\n"
+        "⚡ *Live counts update on the buttons in real time.*"
     )
 
     await context.bot.send_message(
@@ -103,7 +103,7 @@ async def send_attendance_poll(context: ContextTypes.DEFAULT_TYPE):
     )
 
 async def handle_button_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handles button clicks, maps names, and updates the poll message UI dynamically."""
+    """Handles button clicks, maps names, and updates button counters."""
     query = update.callback_query
     user = query.from_user
     
@@ -121,11 +121,11 @@ async def handle_button_click(update: Update, context: ContextTypes.DEFAULT_TYPE
         pass
 
 async def send_consolidated_summary(context: ContextTypes.DEFAULT_TYPE):
-    """Sends a cleanly formatted consolidated summary report."""
+    """Sends a formatted summary following your exact list order."""
     if not attendance_records:
         await context.bot.send_message(
             chat_id=TARGET_CHAT_ID,
-            text="⚠️ **ATTENDANCE SUMMARY**\n\n> No responses recorded for today's roll call.",
+            text="⚠️ **ATTENDANCE SUMMARY**\n\n> No responses recorded for this roll call.",
             parse_mode="Markdown"
         )
         return
@@ -150,12 +150,12 @@ async def send_consolidated_summary(context: ContextTypes.DEFAULT_TYPE):
         
         if names:
             name_list = ", ".join(names)
-            summary += f"{emoji} **{status_key} ({count})**\n└ _{name_list}_\n\n"
+            summary += f"{emoji} **{status_key}: {count}** ({name_list})\n"
         else:
-            summary += f"{emoji} **{status_key} (0)**\n└ _None_\n\n"
+            summary += f"{emoji} **{status_key}: 0**\n"
 
     summary += (
-        f"━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+        f"\n━━━━━━━━━━━━━━━━━━━━━━━━━\n"
         f"👥 **Total Submissions:** `{len(attendance_records)}`"
     )
 
@@ -177,7 +177,7 @@ async def test_summary_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 def main():
     app = Application.builder().token(BOT_TOKEN).build()
 
-    # Callback and Slash Command Handlers
+    # Handlers
     app.add_handler(CallbackQueryHandler(handle_button_click, pattern="^att_"))
     app.add_handler(CommandHandler("testpoll", test_poll_cmd))
     app.add_handler(CommandHandler("testsummary", test_summary_cmd))
