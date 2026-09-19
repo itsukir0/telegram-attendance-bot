@@ -28,7 +28,7 @@ TARGET_CHAT_ID = int(os.getenv("TARGET_CHAT_ID", "0"))
 
 # Map Telegram User IDs (integers) to real display names
 NAME_MAP = {
-    123456789: "Kenneth Khor",  # Replace with actual Telegram User ID
+    6298329418: "Kenneth Khor",  # Replace with actual Telegram User ID
 }
 
 # Your exact 15 attendance status options with matching icons
