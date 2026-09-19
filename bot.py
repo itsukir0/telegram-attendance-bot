@@ -477,7 +477,7 @@ def main():
     # 1. Send Poll at 1:28 AM SGT every Sunday to Thursday (Targeting Mon–Fri attendance)
     scheduler.add_job(
         send_attendance_poll, 
-        CronTrigger(day_of_week='sun-thu', hour=1, minute=25, timezone=SGT), 
+        CronTrigger(day_of_week='sat-thu', hour=1, minute=28, timezone=SGT), 
         kwargs={'context': app}
     )
     
