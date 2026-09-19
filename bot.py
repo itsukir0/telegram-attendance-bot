@@ -233,9 +233,9 @@ async def send_consolidated_summary(context: ContextTypes.DEFAULT_TYPE):
         await context.bot.send_message(
             chat_id=TARGET_CHAT_ID,
             text=(
-                f"🚨 **DAILY ROLL CALL REPORT — {today_str}**\n"
+                f"🚨 **DAILY ATTENDANCE REPORT — {today_str}**\n"
                 f"═══════════════════════════\n\n"
-                f"⚠️ **STATUS:** No declarations submitted for today's roll call."
+                f"⚠️ **STATUS:** No declarations submitted for today's ATTENDANCE."
             ),
             parse_mode="Markdown"
         )
