@@ -246,7 +246,7 @@ async def send_consolidated_summary(context: ContextTypes.DEFAULT_TYPE):
             text=(
                 f"🚨 **DAILY ATTENDANCE REPORT — {today_str}**\n"
                 f"═══════════════════════════\n\n"
-                f"⚠️ **STATUS:** No declarations submitted for today's attendance.\n"
+                f"⚠️ **STATUS:** No declaration submitted for today's attendance.\n"
                 f"👥 **Total Strength:** `{total_personnel}`\n"
                 f"⚠️ **Unaccounted / No Response:** `{total_personnel}` (100%)"
             ),
