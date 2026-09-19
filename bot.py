@@ -286,7 +286,7 @@ async def send_consolidated_summary(context: ContextTypes.DEFAULT_TYPE):
     summary = (
         f"📊 **DAILY ATTENDANCE REPORT — {today_str}**\n"
         f"═══════════════════════════\n\n"
-        f"📈 **PARADE STATE & STRENGTH OVERVIEW**\n"
+        f"📈 **STRENGTH OVERVIEW**\n"
         f"• **Total Roster Strength:** `{total_personnel}`\n"
         f"• **Present Strength:** `{present_count}/{total_personnel}` (`{present_pct}%`)\n"
         f"• **Absent / On Leave:** `{total_personnel - present_count}/{total_personnel}` (`{absent_pct}%`)\n"
