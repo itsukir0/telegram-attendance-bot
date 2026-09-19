@@ -4,7 +4,14 @@ import threading
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from datetime import datetime
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
-from telegram.ext import Application, CallbackQueryHandler, CommandHandler, ContextTypes
+from telegram.ext import (
+    Application,
+    CallbackQueryHandler,
+    CommandHandler,
+    MessageHandler,
+    ContextTypes,
+    filters,
+)
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 
@@ -51,7 +58,7 @@ STATUS_CONFIG = {
     "PL":       {"emoji": "👶", "category": "leave"},
     "OML":      {"emoji": "🎖️", "category": "leave"},
     "Others":   {"emoji": "❓", "category": "leave"},
-    "Late":     {"emoji": "🌚", "category": "medical"}
+    "Late":     {"emoji": "⏰", "category": "medical"}
 }
 
 TIME_OFF_PRESETS = ["Until 10 AM", "Until 11 AM", "Until 12 PM", "Until 2 PM", "Until 4 PM", "Until 5 PM"]
@@ -157,8 +164,7 @@ async def handle_button_click(update: Update, context: ContextTypes.DEFAULT_TYPE
                 chat_id=user.id,
                 text=(
                     f"❓ **Custom Status for {display_name}:**\n\n"
-                    f"Please reply here or in the group with your reason using:\n"
-                    f"`/other Off-in-Lieu` or `/other Course Training`"
+                    f"Please reply with **ANY reason** you want (e.g. `In-Camp Training`, `Off-in-Lieu`, `Personal Matters`)."
                 ),
                 parse_mode="Markdown"
             )
@@ -180,8 +186,7 @@ async def handle_button_click(update: Update, context: ContextTypes.DEFAULT_TYPE
             await query.edit_message_text(
                 text=(
                     f"⏱️ **Custom Time Off for {display_name}:**\n\n"
-                    f"Please reply here or in the group with:\n"
-                    f"`/time 11:30 AM` or `/time 10:00`"
+                    f"Please reply here or in the group with your time (e.g., `11:30 AM` or `/time 10:00`)."
                 ),
                 parse_mode="Markdown"
             )
@@ -222,6 +227,44 @@ async def handle_button_click(update: Update, context: ContextTypes.DEFAULT_TYPE
         await query.edit_message_reply_markup(reply_markup=build_poll_keyboard())
     except Exception:
         pass
+
+async def handle_private_text_reply(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handles direct plain-text messages sent to the bot for custom 'Others' or 'Time Off' reasons."""
+    user = update.message.from_user
+    text = update.message.text.strip()
+    display_name = NAME_MAP.get(user.id, f"{user.first_name} {user.last_name or ''}".strip())
+
+    # Handle pending "Others" entry
+    if user.id in awaiting_custom_others or update.message.chat.type == "private":
+        other_detail = f"Others ({text})"
+        attendance_records[user.id] = {
+            "name": display_name,
+            "status_key": "Others",
+            "status_display": other_detail
+        }
+        if user.id in awaiting_custom_others:
+            awaiting_custom_others.remove(user.id)
+
+        await update.message.reply_text(
+            f"✅ **Recorded for {display_name}:** `{other_detail}`",
+            parse_mode="Markdown"
+        )
+        return
+
+    # Handle pending "Custom Time Off" entry
+    if user.id in awaiting_custom_time:
+        time_detail = f"TIME OFF (Until {text})"
+        attendance_records[user.id] = {
+            "name": display_name,
+            "status_key": "TIME OFF",
+            "status_display": time_detail
+        }
+        awaiting_custom_time.remove(user.id)
+
+        await update.message.reply_text(
+            f"✅ **Recorded for {display_name}:** `{time_detail}`",
+            parse_mode="Markdown"
+        )
 
 async def handle_custom_time_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handles custom time commands like /time 11:30 AM."""
@@ -414,6 +457,9 @@ def main():
     app.add_handler(CommandHandler("other", handle_custom_other_cmd))
     app.add_handler(CommandHandler("testpoll", test_poll_cmd))
     app.add_handler(CommandHandler("testsummary", test_summary_cmd))
+    
+    # Catch any direct text message in PM for "Others" or "Time Off"
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_private_text_reply))
 
     # Production Scheduler (Daily Poll at 8:00 PM SGT, Daily Summary at 8:00 AM SGT)
     scheduler = AsyncIOScheduler()
