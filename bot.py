@@ -27,6 +27,11 @@ threading.Thread(target=run_health_check_server, daemon=True).start()
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 TARGET_CHAT_ID = int(os.getenv("TARGET_CHAT_ID", "0"))
 
+# Map Telegram User IDs (integers) to real display names
+NAME_MAP = {
+    6298329418: "Kenneth Khor",  # Replace 123456789 with your actual Telegram User ID
+}
+
 attendance_records = {}
 STATUS_OPTIONS = ["Present", "Off", "MC", "MA", "OS", "Others"]
 
@@ -49,10 +54,16 @@ async def handle_button_click(update: Update, context: ContextTypes.DEFAULT_TYPE
     query = update.callback_query
     await query.answer()
     user = query.from_user
-    full_name = f"{user.first_name} {user.last_name or ''}".strip()
+    
+    # Check if user ID exists in NAME_MAP
+    if user.id in NAME_MAP:
+        display_name = NAME_MAP[user.id]
+    else:
+        display_name = f"{user.first_name} {user.last_name or ''}".strip()
+
     status = query.data.replace("att_", "")
     
-    attendance_records[user.id] = {"name": full_name, "status": status}
+    attendance_records[user.id] = {"name": display_name, "status": status}
     await query.answer(text=f"Logged: {status}", show_alert=False)
 
 async def send_consolidated_summary(context: ContextTypes.DEFAULT_TYPE):
@@ -85,17 +96,17 @@ def main():
 
     scheduler = AsyncIOScheduler()
 
-    # Test Poll at 9:15 PM SGT
+    # Test Poll at 9:22 PM SGT
     scheduler.add_job(
         send_attendance_poll, 
-        CronTrigger(hour=21, minute=15, timezone='Asia/Singapore'), 
+        CronTrigger(hour=21, minute=24, timezone='Asia/Singapore'), 
         args=[app]
     )
 
-    # Test Summary at 9:16 PM SGT
+    # Test Summary at 9:23 PM SGT
     scheduler.add_job(
         send_consolidated_summary, 
-        CronTrigger(hour=21, minute=16, timezone='Asia/Singapore'), 
+        CronTrigger(hour=21, minute=25, timezone='Asia/Singapore'), 
         args=[app]
     )
 
