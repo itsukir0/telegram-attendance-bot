@@ -84,8 +84,20 @@ def main():
     app.add_handler(CallbackQueryHandler(handle_button_click, pattern="^att_"))
 
     scheduler = AsyncIOScheduler()
-    scheduler.add_job(send_attendance_poll, CronTrigger(day_of_week='sun', hour=20, minute=0), args=[app])
-    scheduler.add_job(send_consolidated_summary, CronTrigger(day_of_week='mon', hour=8, minute=0), args=[app])
+
+    # Test Poll at 9:15 PM SGT
+    scheduler.add_job(
+        send_attendance_poll, 
+        CronTrigger(hour=21, minute=15, timezone='Asia/Singapore'), 
+        args=[app]
+    )
+
+    # Test Summary at 9:16 PM SGT
+    scheduler.add_job(
+        send_consolidated_summary, 
+        CronTrigger(hour=21, minute=16, timezone='Asia/Singapore'), 
+        args=[app]
+    )
 
     scheduler.start()
     app.run_polling()
