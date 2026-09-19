@@ -2,7 +2,8 @@ import os
 import logging
 import threading
 from http.server import HTTPServer, BaseHTTPRequestHandler
-from datetime import datetime
+from datetime import datetime, timedelta
+import pytz
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import (
     Application,
@@ -14,6 +15,9 @@ from telegram.ext import (
 )
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
+
+# Timezone setup
+SGT = pytz.timezone('Asia/Singapore')
 
 # 1. Dummy Web Server to keep Render's Free Web Service happy
 class HealthCheckHandler(BaseHTTPRequestHandler):
@@ -113,15 +117,19 @@ def build_time_off_keyboard():
     return InlineKeyboardMarkup(keyboard)
 
 async def send_attendance_poll(context: ContextTypes.DEFAULT_TYPE):
-    """Sends the daily attendance poll."""
+    """Sends the daily attendance poll targeting the NEXT day's attendance."""
     attendance_records.clear()
     awaiting_custom_time.clear()
     awaiting_custom_others.clear()
     
+    # Calculate target date (Tomorrow SGT)
+    target_date = (datetime.now(SGT) + timedelta(days=1)).strftime("%A, %d %b %Y").upper()
+    
     poll_text = (
-        "📌 **DAILY ATTENDANCE DECLARATION**\n"
-        "═══════════════════════════\n"
-        "Please select your status for tomorrow by tapping an option below:"
+        f"📌 **DAILY ATTENDANCE DECLARATION**\n"
+        f"📅 **FOR: {target_date}**\n"
+        f"═══════════════════════════\n"
+        f"Please select your status by tapping an option below:"
     )
 
     await context.bot.send_message(
@@ -317,8 +325,8 @@ async def handle_custom_other_cmd(update: Update, context: ContextTypes.DEFAULT_
     )
 
 async def send_consolidated_summary(context: ContextTypes.DEFAULT_TYPE):
-    """Sends a clean, executive-style dashboard report showing total responses and non-responses."""
-    today_str = datetime.now().strftime("%d %b %Y").upper()
+    """Sends a clean dashboard report showing total responses for today's attendance."""
+    today_str = datetime.now(SGT).strftime("%A, %d %b %Y").upper()
     
     # Fetch live member count from Telegram (Subtract 1 for the Bot itself)
     try:
@@ -334,7 +342,8 @@ async def send_consolidated_summary(context: ContextTypes.DEFAULT_TYPE):
         await context.bot.send_message(
             chat_id=TARGET_CHAT_ID,
             text=(
-                f"🚨 **DAILY ATTENDANCE REPORT — {today_str}**\n"
+                f"🚨 **DAILY ATTENDANCE REPORT**\n"
+                f"📅 **DATE: {today_str}**\n"
                 f"═══════════════════════════\n\n"
                 f"⚠️ **STATUS:** No declarations submitted for today's attendance.\n"
                 f"👥 **Total Strength:** `{total_personnel}`\n"
@@ -374,7 +383,8 @@ async def send_consolidated_summary(context: ContextTypes.DEFAULT_TYPE):
     no_response_pct = int((no_response_count / total_personnel) * 100) if total_personnel else 0
 
     summary = (
-        f"📊 **DAILY ATTENDANCE REPORT — {today_str}**\n"
+        f"📊 **DAILY ATTENDANCE REPORT**\n"
+        f"📅 **DATE: {today_str}**\n"
         f"═══════════════════════════\n\n"
         f"📈 **STRENGTH OVERVIEW**\n"
         f"• **Total Roster Strength:** `{total_personnel}`\n"
@@ -430,7 +440,7 @@ async def send_consolidated_summary(context: ContextTypes.DEFAULT_TYPE):
 
     summary += (
         f"═══════════════════════════\n"
-        f"⚡ *Generated automatically at {datetime.now().strftime('%H:%M SGT')}*"
+        f"⚡ *Generated automatically at {datetime.now(SGT).strftime('%H:%M SGT')}*"
     )
 
     await context.bot.send_message(
@@ -458,21 +468,23 @@ def main():
     app.add_handler(CommandHandler("testpoll", test_poll_cmd))
     app.add_handler(CommandHandler("testsummary", test_summary_cmd))
     
-    # Catch any direct text message in PM for "Others" or "Time Off"
+    # Catch direct text messages in PM for "Others" or "Time Off"
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_private_text_reply))
 
-    # Production Scheduler (Daily Poll at 8:00 PM SGT, Daily Summary at 8:00 AM SGT)
-    scheduler = AsyncIOScheduler()
+    # Production Scheduler
+    scheduler = AsyncIOScheduler(timezone=SGT)
     
+    # 1. Send Poll at 7:00 PM SGT every Sunday to Thursday (Targeting Mon–Fri attendance)
     scheduler.add_job(
         send_attendance_poll, 
-        CronTrigger(hour=20, minute=0, timezone='Asia/Singapore'), 
+        CronTrigger(day_of_week='sun-thu', hour=19, minute=0, timezone=SGT), 
         kwargs={'context': app}
     )
     
+    # 2. Send Summary at 8:00 AM SGT every Monday to Friday
     scheduler.add_job(
         send_consolidated_summary, 
-        CronTrigger(hour=8, minute=0, timezone='Asia/Singapore'), 
+        CronTrigger(day_of_week='mon-fri', hour=8, minute=0, timezone=SGT), 
         kwargs={'context': app}
     )
 
