@@ -51,7 +51,7 @@ STATUS_CONFIG = {
     "PL":       {"emoji": "👶", "category": "leave"},
     "OML":      {"emoji": "🎖️", "category": "leave"},
     "Others":   {"emoji": "❓", "category": "leave"},
-    "Late":     {"emoji": "⏰", "category": "medical"}
+    "Late":     {"emoji": "🌚", "category": "medical"}
 }
 
 TIME_OFF_PRESETS = ["Until 10 AM", "Until 11 AM", "Until 12 PM", "Until 2 PM", "Until 4 PM", "Until 5 PM"]
