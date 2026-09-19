@@ -227,24 +227,28 @@ async def handle_custom_time_cmd(update: Update, context: ContextTypes.DEFAULT_T
     )
 
 async def send_consolidated_summary(context: ContextTypes.DEFAULT_TYPE):
-    """Sends a clean, executive-style dashboard report using dynamic chat member count."""
+    """Sends a clean, executive-style dashboard report showing total responses and non-responses."""
     today_str = datetime.now().strftime("%d %b %Y").upper()
     
-    # 1. Fetch live member count from Telegram (Subtract 1 for the Bot itself)
+    # Fetch live member count from Telegram (Subtract 1 for the Bot itself)
     try:
         chat_member_count = await context.bot.get_chat_member_count(TARGET_CHAT_ID)
         total_personnel = max(1, chat_member_count - 1)
     except Exception:
         total_personnel = len(NAME_MAP) if NAME_MAP else len(attendance_records)
 
+    total_responses = len(attendance_records)
+    no_response_count = max(0, total_personnel - total_responses)
+
     if not attendance_records:
         await context.bot.send_message(
             chat_id=TARGET_CHAT_ID,
             text=(
-                f"🚨 **DAILY ROLL CALL REPORT — {today_str}**\n"
+                f"🚨 **DAILY ATTENDANCE REPORT — {today_str}**\n"
                 f"═══════════════════════════\n\n"
-                f"⚠️ **STATUS:** No declarations submitted for today's roll call.\n"
-                f"👥 **Total Chat Strength:** `{total_personnel}`"
+                f"⚠️ **STATUS:** No declarations submitted for today's attendance.\n"
+                f"👥 **Total Roster Strength:** `{total_personnel}`\n"
+                f"⚠️ **Unaccounted / No Response:** `{total_personnel}` (100%)"
             ),
             parse_mode="Markdown"
         )
@@ -271,21 +275,23 @@ async def send_consolidated_summary(context: ContextTypes.DEFAULT_TYPE):
         else:
             leave_count += 1
 
-    total_responses = len(attendance_records)
     unsubmitted_ids = set(NAME_MAP.keys()) - set(attendance_records.keys()) if NAME_MAP else set()
     unsubmitted_names = [NAME_MAP[uid] for uid in unsubmitted_ids]
 
-    # Calculate strength stats
+    # Calculate percentages
     present_pct = int((present_count / total_personnel) * 100) if total_personnel else 0
-    absent_pct = 100 - present_pct
+    absent_pct = int(((total_personnel - present_count) / total_personnel) * 100) if total_personnel else 0
+    no_response_pct = int((no_response_count / total_personnel) * 100) if total_personnel else 0
 
     summary = (
-        f"📊 **DAILY ROLL CALL REPORT — {today_str}**\n"
+        f"📊 **DAILY ATTENDANCE REPORT — {today_str}**\n"
         f"═══════════════════════════\n\n"
         f"📈 **PARADE STATE & STRENGTH OVERVIEW**\n"
         f"• **Total Roster Strength:** `{total_personnel}`\n"
         f"• **Present Strength:** `{present_count}/{total_personnel}` (`{present_pct}%`)\n"
         f"• **Absent / On Leave:** `{total_personnel - present_count}/{total_personnel}` (`{absent_pct}%`)\n"
+        f"• **Poll Responses Received:** `{total_responses}/{total_personnel}`\n"
+        f"• ⚠️ **Unaccounted / No Response:** `{no_response_count}/{total_personnel}` (`{no_response_pct}%`)\n"
         f"───────────────────────────\n\n"
     )
 
