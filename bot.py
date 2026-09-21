@@ -46,7 +46,7 @@ NAME_MAP = {
 STATUS_CONFIG = {
     "PRESENT":  {"emoji": "🟢", "category": "present"},
     "AM OFF":   {"emoji": "🌅", "category": "leave"},
-    "PM OFF":   {"emoji": "🌇", "category": "leave"},
+    "PM OFF":   {"emoji": "np", "category": "leave"},
     "TIME OFF": {"emoji": "⏱️", "category": "leave"},
     "OFF":      {"emoji": "🌴", "category": "leave"},
     "MC":       {"emoji": "🤒", "category": "medical"},
@@ -376,7 +376,7 @@ async def send_consolidated_summary(context: ContextTypes.DEFAULT_TYPE):
     unsubmitted_ids = set(NAME_MAP.keys()) - set(attendance_records.keys()) if NAME_MAP else set()
     unsubmitted_names = [NAME_MAP[uid] for uid in unsubmitted_ids]
 
-    # Calculate percentages based on total strength of 18
+    # Calculate percentages based on total strength
     present_pct = int((present_count / total_personnel) * 100)
     absent_pct = int(((total_personnel - present_count) / total_personnel) * 100)
     no_response_pct = int((no_response_count / total_personnel) * 100)
@@ -439,7 +439,7 @@ async def send_consolidated_summary(context: ContextTypes.DEFAULT_TYPE):
 
     summary += (
         f"═══════════════════════════\n"
-        f"⚡ *Generated on demand at {datetime.now(SGT).strftime('%H:%M SGT')}*"
+        f"⚡ *Generated at {datetime.now(SGT).strftime('%H:%M SGT')}*"
     )
 
     await context.bot.send_message(
@@ -475,10 +475,17 @@ def main():
     # Production Scheduler
     scheduler = AsyncIOScheduler(timezone=SGT)
     
-    # Automatic Poll dispatch at 7:00 PM SGT (Sunday through Thursday nights)
+    # 1. Automatic Poll dispatch at 7:30 PM SGT (Sunday through Thursday nights)
     scheduler.add_job(
         send_attendance_poll,
         CronTrigger(day_of_week='sun,mon,tue,wed,thu', hour=19, minute=30, timezone=SGT),
+        kwargs={'context': app}
+    )
+
+    # 2. Automatic Summary dispatch at 7:30 AM SGT (Monday through Friday mornings)
+    scheduler.add_job(
+        send_consolidated_summary,
+        CronTrigger(day_of_week='mon,tue,wed,thu,fri', hour=7, minute=30, timezone=SGT),
         kwargs={'context': app}
     )
 
