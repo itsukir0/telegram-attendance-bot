@@ -328,9 +328,12 @@ async def send_consolidated_summary(context: ContextTypes.DEFAULT_TYPE):
     """Sends a clean dashboard report showing total responses for today's attendance."""
     today_str = datetime.now(SGT).strftime("%A, %d %b %Y").upper()
     
+    # Target chat ID determination (works in group or direct reply)
+    chat_id = TARGET_CHAT_ID
+
     # Fetch live member count from Telegram (Subtract 1 for the Bot itself)
     try:
-        chat_member_count = await context.bot.get_chat_member_count(TARGET_CHAT_ID)
+        chat_member_count = await context.bot.get_chat_member_count(chat_id)
         total_personnel = max(1, chat_member_count - 1)
     except Exception:
         total_personnel = len(NAME_MAP) if NAME_MAP else len(attendance_records)
@@ -340,7 +343,7 @@ async def send_consolidated_summary(context: ContextTypes.DEFAULT_TYPE):
 
     if not attendance_records:
         await context.bot.send_message(
-            chat_id=TARGET_CHAT_ID,
+            chat_id=chat_id,
             text=(
                 f"🚨 **DAILY ATTENDANCE REPORT**\n"
                 f"📅 **DATE: {today_str}**\n"
@@ -440,33 +443,35 @@ async def send_consolidated_summary(context: ContextTypes.DEFAULT_TYPE):
 
     summary += (
         f"═══════════════════════════\n"
-        f"⚡ *Generated automatically at {datetime.now(SGT).strftime('%H:%M SGT')}*"
+        f"⚡ *Generated on demand at {datetime.now(SGT).strftime('%H:%M SGT')}*"
     )
 
     await context.bot.send_message(
-        chat_id=TARGET_CHAT_ID, 
+        chat_id=chat_id, 
         text=summary, 
         parse_mode="Markdown"
     )
 
-# 3. Command Handlers for Manual Testing
+# 3. Command Handlers
 async def test_poll_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Manual trigger: /testpoll"""
+    """Manual trigger for poll message: /poll or /testpoll"""
     await send_attendance_poll(context)
 
-async def test_summary_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Manual trigger: /testsummary"""
+async def trigger_summary_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Manual trigger for summary report: /summary or /testsummary"""
     await send_consolidated_summary(context)
 
 def main():
     app = Application.builder().token(BOT_TOKEN).build()
 
-    # Handlers
+    # Callback & Command Handlers
     app.add_handler(CallbackQueryHandler(handle_button_click))
     app.add_handler(CommandHandler("time", handle_custom_time_cmd))
     app.add_handler(CommandHandler("other", handle_custom_other_cmd))
-    app.add_handler(CommandHandler("testpoll", test_poll_cmd))
-    app.add_handler(CommandHandler("testsummary", test_summary_cmd))
+    
+    # Manual triggers
+    app.add_handler(CommandHandler(["poll", "testpoll"], test_poll_cmd))
+    app.add_handler(CommandHandler(["summary", "testsummary"], trigger_summary_cmd))
     
     # Catch direct text messages in PM for "Others" or "Time Off"
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_private_text_reply))
@@ -474,17 +479,10 @@ def main():
     # Production Scheduler
     scheduler = AsyncIOScheduler(timezone=SGT)
     
-    # 1. Send Poll at 7:00 PM SGT (Sunday to Thursday nights) for the next workday's attendance
+    # Automatic Poll dispatch at 7:00 PM SGT (Sunday through Thursday nights)
     scheduler.add_job(
         send_attendance_poll,
-        CronTrigger(day_of_week='sun-thu', hour=19, minute=0, timezone=SGT),
-        kwargs={'context': app}
-    )
-    
-    # 2. Send Summary at 8:00 AM SGT (Monday to Friday mornings)
-    scheduler.add_job(
-        send_consolidated_summary, 
-        CronTrigger(day_of_week='mon-fri', hour=8, minute=0, timezone=SGT), 
+        CronTrigger(day_of_week='sun,mon,tue,wed,thu', hour=19, minute=0, timezone=SGT),
         kwargs={'context': app}
     )
 
