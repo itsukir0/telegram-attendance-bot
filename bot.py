@@ -332,7 +332,7 @@ async def send_consolidated_summary(context: ContextTypes.DEFAULT_TYPE):
     chat_id = TARGET_CHAT_ID
 
     # Fixed total personnel count
-    total_personnel = 18
+    total_personnel = 20
 
     total_responses = len(attendance_records)
     no_response_count = max(0, total_personnel - total_responses)
