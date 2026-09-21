@@ -5,6 +5,7 @@ from http.server import HTTPServer, BaseHTTPRequestHandler
 from datetime import datetime, timedelta
 import pytz
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
+from telegram.error import TelegramError
 from telegram.ext import (
     Application,
     CallbackQueryHandler,
@@ -46,7 +47,7 @@ NAME_MAP = {
 STATUS_CONFIG = {
     "PRESENT":  {"emoji": "🟢", "category": "present"},
     "AM OFF":   {"emoji": "🌅", "category": "leave"},
-    "PM OFF":   {"emoji": "np", "category": "leave"},
+    "PM OFF":   {"emoji": "🌇", "category": "leave"},
     "TIME OFF": {"emoji": "⏱️", "category": "leave"},
     "OFF":      {"emoji": "🌴", "category": "leave"},
     "MC":       {"emoji": "🤒", "category": "medical"},
@@ -140,14 +141,14 @@ async def send_attendance_poll(context: ContextTypes.DEFAULT_TYPE):
     )
 
 async def handle_button_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handles button clicks and updates button counters without editing the main poll message."""
+    """Handles button clicks cleanly without freezing on rate limits."""
     query = update.callback_query
     user = query.from_user
     data = query.data
     
     display_name = NAME_MAP.get(user.id, f"{user.first_name} {user.last_name or ''}".strip())
 
-    # User clicked "TIME OFF" -> Send them a private DM
+    # User clicked "TIME OFF" -> Send DM
     if data == "att_TIME OFF":
         try:
             await context.bot.send_message(
@@ -164,7 +165,7 @@ async def handle_button_click(update: Update, context: ContextTypes.DEFAULT_TYPE
             )
         return
 
-    # User clicked "Others" -> Prompt for custom status reason via DM
+    # User clicked "Others" -> Prompt via DM
     if data == "att_Others":
         awaiting_custom_others.add(user.id)
         try:
@@ -184,7 +185,7 @@ async def handle_button_click(update: Update, context: ContextTypes.DEFAULT_TYPE
             )
         return
 
-    # User selected a Time Off option in private chat
+    # Handle Private Time Off selection
     if data.startswith("timeoff_"):
         sub_action = data.replace("timeoff_", "")
 
@@ -209,14 +210,14 @@ async def handle_button_click(update: Update, context: ContextTypes.DEFAULT_TYPE
         await query.answer(text=f"⏱️ Logged: {time_detail}", show_alert=False)
         await query.edit_message_text(f"✅ **Recorded:** `{time_detail}`", parse_mode="Markdown")
 
-        # Refresh group poll counters silently
+        # Refresh group poll counters silently without crashing on rate limits
         try:
             await context.bot.edit_message_reply_markup(
                 chat_id=TARGET_CHAT_ID,
                 message_id=query.message.message_id,
                 reply_markup=build_poll_keyboard()
             )
-        except Exception:
+        except TelegramError:
             pass
         return
 
@@ -229,11 +230,15 @@ async def handle_button_click(update: Update, context: ContextTypes.DEFAULT_TYPE
     }
     
     emoji = STATUS_CONFIG.get(status, {}).get("emoji", "👍")
+    
+    # ALWAYS answer the query FIRST so the button stops loading immediately
     await query.answer(text=f"{emoji} Logged: {status} ({display_name})", show_alert=False)
 
+    # Edit UI in a safe block that swallows Telegram edit rate-limit errors
     try:
         await query.edit_message_reply_markup(reply_markup=build_poll_keyboard())
-    except Exception:
+    except TelegramError:
+        # If rate limited or markup didn't change, ignore and keep running
         pass
 
 async def handle_private_text_reply(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -328,10 +333,7 @@ async def send_consolidated_summary(context: ContextTypes.DEFAULT_TYPE):
     """Sends a clean dashboard report showing total responses for today's attendance."""
     today_str = datetime.now(SGT).strftime("%A, %d %b %Y").upper()
     
-    # Target chat ID determination (works in group or direct reply)
     chat_id = TARGET_CHAT_ID
-
-    # Fixed total personnel count
     total_personnel = 20
 
     total_responses = len(attendance_records)
