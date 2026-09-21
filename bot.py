@@ -331,12 +331,8 @@ async def send_consolidated_summary(context: ContextTypes.DEFAULT_TYPE):
     # Target chat ID determination (works in group or direct reply)
     chat_id = TARGET_CHAT_ID
 
-    # Fetch live member count from Telegram (Subtract 1 for the Bot itself)
-    try:
-        chat_member_count = await context.bot.get_chat_member_count(chat_id)
-        total_personnel = max(1, chat_member_count - 1)
-    except Exception:
-        total_personnel = len(NAME_MAP) if NAME_MAP else len(attendance_records)
+    # Fixed total personnel count
+    total_personnel = 18
 
     total_responses = len(attendance_records)
     no_response_count = max(0, total_personnel - total_responses)
@@ -380,10 +376,10 @@ async def send_consolidated_summary(context: ContextTypes.DEFAULT_TYPE):
     unsubmitted_ids = set(NAME_MAP.keys()) - set(attendance_records.keys()) if NAME_MAP else set()
     unsubmitted_names = [NAME_MAP[uid] for uid in unsubmitted_ids]
 
-    # Calculate percentages
-    present_pct = int((present_count / total_personnel) * 100) if total_personnel else 0
-    absent_pct = int(((total_personnel - present_count) / total_personnel) * 100) if total_personnel else 0
-    no_response_pct = int((no_response_count / total_personnel) * 100) if total_personnel else 0
+    # Calculate percentages based on total strength of 18
+    present_pct = int((present_count / total_personnel) * 100)
+    absent_pct = int(((total_personnel - present_count) / total_personnel) * 100)
+    no_response_pct = int((no_response_count / total_personnel) * 100)
 
     summary = (
         f"📊 **DAILY ATTENDANCE REPORT**\n"
